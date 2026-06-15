@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lantern Garden</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;touch-action:none}
+canvas{display:block;width:100vw;height:100vh}
+#ui{
+position:fixed;top:12px;left:50%;transform:translateX(-50%);
+color:white;font-family:sans-serif;text-align:center;
+text-shadow:0 2px 4px rgba(0,0,0,.5);pointer-events:none}
+#msg{opacity:0;transition:opacity .8s}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+<div><b>Lantern Garden</b></div>
+<div id="phase"></div>
+<div id="msg"></div>
+</div>
+<script>
+const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
+const msg=document.getElementById("msg"),phaseEl=document.getElementById("phase");
+
+function resize(){canvas.width=innerWidth*devicePixelRatio;canvas.height=innerHeight*devicePixelRatio;
+ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);}
+addEventListener("resize",resize);resize();
+
+const memories=[
+"The night smiles.","A memory blossoms.","The breeze carries hope.",
+"The stars remember.","A forgotten song lives nearby.","Moonlight gathers gently."
+];
+
+let save=JSON.parse(localStorage.getItem("lanternGarden")||'{"blooms":0}');
+let blooms=save.blooms||0;
+
+const phases=[
+["Twilight Meadow","#345","#6a8"],
+["Firefly Evening","#573","#da8"],
+["Moonlit Garden","#223","#89a"],
+["Aurora Bloom","#325","#d8a"],
+["Celestial Orchard","#112","#9cf"]
+];
+
+function phaseIndex(){return Math.min(4,Math.floor(blooms/12));}
+
+function flashMessage(t){
+msg.textContent=t;
+msg.style.opacity=1;
+clearTimeout(flashMessage.t);
+flashMessage.t=setTimeout(()=>msg.style.opacity=0,2500);
+}
+
+const lantern={x:innerWidth/2,y:innerHeight/2,vx:0,vy:0,target:null};
+
+addEventListener("pointerdown",e=>lantern.target={x:e.clientX,y:e.clientY});
+addEventListener("pointermove",e=>{if(lantern.target){lantern.target.x=e.clientX;lantern.target.y=e.clientY;}});
+addEventListener("pointerup",()=>lantern.target=null);
+
+const flowers=[];
+const particles=[];
+const fireflies=[];
+
+function spawnFlower(){
+flowers.push({
+x:Math.random()*innerWidth,
+y:80+Math.random()*(innerHeight-160),
+r:10+Math.random()*12,
+bloom:false,
+pulse:Math.random()*6.28
+});
+}
+
+for(let i=0;i<30;i++)spawnFlower();
+
+for(let i=0;i<40;i++){
+fireflies.push({
+x:Math.random()*innerWidth,y:Math.random()*innerHeight,
+a:Math.random()*6.28,s:0.3+Math.random()
+});
+}
+
+function bloomFlower(f){
+f.bloom=true;
+blooms++;
+localStorage.setItem("lanternGarden",JSON.stringify({blooms}));
+flashMessage(memories[Math.floor(Math.random()*memories.length)]);
+for(let i=0;i<25;i++){
+particles.push({
+x:f.x,y:f.y,
+vx:(Math.random()-0.5)*3,
+vy:(Math.random()-0.5)*3,
+life:60+Math.random()*30
+});
+}
+if(flowers.filter(x=>!x.bloom).length<10){
+for(let i=0;i<8;i++)spawnFlower();
+}
+}
+
+let t=0;
+function loop(){
+requestAnimationFrame(loop);
+t++;
+
+const p=phaseIndex();
+phaseEl.textContent=phases[p][0]+" • Flowers Awakened: "+blooms;
+
+if(lantern.target){
+lantern.vx+=(lantern.target.x-lantern.x)*0.01;
+lantern.vy+=(lantern.target.y-lantern.y)*0.01;
+}
+lantern.vx*=0.96;
+lantern.vy*=0.96;
+lantern.x+=lantern.vx;
+lantern.y+=lantern.vy;
+
+const g=ctx.createLinearGradient(0,0,0,innerHeight);
+g.addColorStop(0,phases[p][1]);
+g.addColorStop(1,phases[p][2]);
+ctx.fillStyle=g;
+ctx.fillRect(0,0,innerWidth,innerHeight);
+
+for(const ff of fireflies){
+ff.a+=0.01*ff.s;
+ff.x+=Math.sin(ff.a)*0.3;
+ff.y+=Math.cos(ff.a*0.7)*0.3;
+ctx.globalAlpha=0.3+0.7*Math.sin(ff.a)*0.5;
+ctx.fillStyle="#fff6aa";
+ctx.beginPath();
+ctx.arc(ff.x,ff.y,2,0,7);
+ctx.fill();
+}
+ctx.globalAlpha=1;
+
+for(const f of flowers){
+const near=Math.hypot(lantern.x-f.x,lantern.y-f.y);
+if(!f.bloom && near<45) bloomFlower(f);
+
+f.pulse+=0.03;
+ctx.save();
+ctx.translate(f.x,f.y);
+
+if(f.bloom){
+for(let i=0;i<6;i++){
+ctx.rotate(Math.PI/3);
+ctx.fillStyle="hsl("+(200+(i*20)%120)+" 80% 75%)";
+ctx.beginPath();
+ctx.ellipse(0,-f.r,7,f.r,0,0,7);
+ctx.fill();
+}
+ctx.fillStyle="#ffd";
+ctx.beginPath();ctx.arc(0,0,5,0,7);ctx.fill();
+} else {
+ctx.fillStyle="rgba(255,255,255,.35)";
+ctx.beginPath();
+ctx.arc(0,0,f.r*(0.8+Math.sin(f.pulse)*0.1),0,7);
+ctx.fill();
+}
+ctx.restore();
+}
+
+for(let i=particles.length-1;i>=0;i--){
+const p=particles[i];
+p.life--;
+p.x+=p.vx;p.y+=p.vy;
+ctx.globalAlpha=Math.max(0,p.life/90);
+ctx.fillStyle="#fff";
+ctx.fillRect(p.x,p.y,2,2);
+if(p.life<=0)particles.splice(i,1);
+}
+ctx.globalAlpha=1;
+
+const glow=ctx.createRadialGradient(lantern.x,lantern.y,0,lantern.x,lantern.y,60);
+glow.addColorStop(0,"rgba(255,245,180,1)");
+glow.addColorStop(1,"rgba(255,245,180,0)");
+ctx.fillStyle=glow;
+ctx.beginPath();
+ctx.arc(lantern.x,lantern.y,60,0,7);
+ctx.fill();
+
+ctx.fillStyle="#ffe7a0";
+ctx.beginPath();
+ctx.arc(lantern.x,lantern.y,10,0,7);
+ctx.fill();
+}
+loop();
+</script>
+</body>
+</html>
